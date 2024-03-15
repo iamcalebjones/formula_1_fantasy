@@ -513,3 +513,224 @@ def score_race_full(driver_scores,
     return driver_scores, constructor_scores, driver_score_summary, constructor_score_summary
 
 
+def score_race_qualifying_predicted(
+    weekend_df,
+    track_name):
+    '''
+    this function scores the predicted race and qualifying results in one go.
+    it takes the predicted from qualifying and the race, awards points for positions gained/lost and overtakes, and awards points for finish order in qualifying and in the race. 
+    it awards fastest lap to the race winner because usually that's how it goes, but not always.
+    
+    parameters:
+    track_name: str, track name as it appears in the sheet_gid dict for the purpose of loading the correct track.
+    predicted_df: dataframe, a sub-df of the weekend_df that only has predicted qualifying and race positions for each driver, and non participations removed
+    
+    returns: 
+    drivers: list
+    constrctors: list
+    driver_scores: dict, dict of the drivers' scores
+    constructor_scores: dict, dict of the constructors' scores
+    driver_score_summary: dict, breaking down the pieces of the drivers' scores
+    constructor_score_summary: dict, breaking down the pieces of the constructors' scores
+    '''
+    
+    # some setup
+    predicted_df = weekend_df[['Team', 'Driver', f'predicted_qualifying_{track_name}', f'predicted_race_{track_name}']]
+    predicted_df = predicted_df[predicted_df[f'predicted_qualifying_{track_name}'] <= 20]
+    driver_scores, constructor_scores, driver_score_summary, constructor_score_summary = {}, {}, {}, {}
+    driver_to_constructor, constructor_to_driver = driver_constructor_mappings(predicted_df)
+    predicted_qualifying_order = predicted_df.sort_values(by=[f'predicted_qualifying_{track_name}'])['Driver'].tolist()
+    
+    # Score race and qualifying order. Assume all drivers posted a qualifying time and finished the race.
+    for driver in predicted_df.Driver:
+        constructor = predicted_df.loc[predicted_df.Driver == driver]['Team'].values[0]
+        driver_score_summary[driver] = {}
+        driver_score_summary[driver]['constructor'] = constructor
+        driver_points = 0
+        constructor_points = 0
+        
+        quali_position = predicted_df.loc[predicted_df.Driver == driver][f'predicted_qualifying_{track_name}'].values[0]
+        race_position = predicted_df.loc[predicted_df.Driver == driver][f'predicted_race_{track_name}'].values[0]
+
+        # assume gain/loss and overtakes are strictly due to difference between qualifying and race positions
+        # overtakes cannot be negative
+        driver_gain_loss = quali_position - race_position
+        driver_overtake = (driver_gain_loss if driver_gain_loss >= 0 else 0)
+        
+        driver_score_summary[driver]['quali_position'] = quali_position
+        driver_score_summary[driver]['race_position'] = race_position
+        driver_score_summary[driver]['gain_loss'] = driver_gain_loss
+        driver_score_summary[driver]['overtake'] = driver_overtake
+        
+        # score driver and constructor for finishing position
+        # +1-25 for position
+        race_position_points = race_position_to_points.get(race_position)
+        quali_position_points = quali_position_to_points.get(quali_position)
+        
+        # tally up the gain/loss, overtake, race position points, and quali position points
+        driver_points += driver_gain_loss + driver_overtake + race_position_points + quali_position_points
+        constructor_points += driver_gain_loss + driver_overtake + race_position_points + quali_position_points
+        
+        driver_score_summary[driver]['quali_position_points'] = quali_position_points
+        driver_score_summary[driver]['race_position_points'] = race_position_points
+        
+        driver_scores = increase_score(driver_scores, driver, driver_points)
+        constructor_scores = increase_score(constructor_scores, constructor, constructor_points)
+    
+        
+    # Score constructors' qualification results based on how the drivers qualify. Assume all drivers post a qualifying position
+    for constructor in predicted_df.Team.unique():
+        constructor_score_summary[constructor] = {}
+        
+        # which qualifying position did each driver finish in
+        team_qualifying_positions = predicted_df.loc[predicted_df.Team == constructor][f'predicted_qualifying_{track_name}'].tolist()
+        
+        # which qualifying round did each driver finish in
+        team_qualifying_rounds = list(map(lambda p: quali_result(p), team_qualifying_positions))
+        
+        # points for qualifying positions
+        quali_position_points = sum(map(lambda d: quali_position_to_points[d], team_qualifying_positions))
+
+        q3_tot = [x for x in team_qualifying_rounds if x == 'Q3']
+        q2_tot = [x for x in team_qualifying_rounds if x == 'Q2']
+
+        # q3 finishers
+        if len(q3_tot) == 2:
+            team_quali_score = 10
+        elif len(q3_tot) == 1:
+            team_quali_score = 5
+                
+        # q2 finishers
+        elif len(q2_tot) == 2:
+            team_quali_score = 3
+        elif len(q2_tot) == 1:
+            team_quali_score = 1
+
+        # nobody got past q1
+        else:
+            team_quali_score = -1
+            
+        constructor_scores = increase_score(constructor_scores, constructor, team_quali_score)
+        
+        constructor_score_summary[constructor]['quali_position'] = {q[0]: q[1] for q in predicted_df.loc[predicted_df.Team == constructor][['Driver', f'predicted_qualifying_{track_name}']].values}
+        constructor_score_summary[constructor]['quali_position_points'] = quali_position_points
+        constructor_score_summary[constructor]['quali_finish_points'] = team_quali_score
+        
+        
+    # award fastest lap to driver predicted to finish race in P1
+    fastest_driver = predicted_df.sort_values(f'predicted_race_{track_name}')['Driver'].tolist()[0]
+    driver_scores = increase_score(driver_scores, fastest_driver, 10)
+
+    return predicted_df.Driver.tolist(), predicted_df.Team.unique(), driver_scores, constructor_scores, driver_score_summary, constructor_score_summary
+
+
+class Team:
+    def __init__(self, score, constructor_team, driver_selection, turbo_driver, substitutions_needed):
+        self.score = score
+        self.constructor_team = constructor_team
+        self.driver_selection = driver_selection
+        self.turbo_driver = turbo_driver
+        self.substitutions_needed = substitutions_needed
+
+    def __lt__(self, other):
+        return self.score < other.score
+
+    def __str__(self):
+        return f'Constructor: {self.constructor_team}\n' \
+               f'Drivers: {self.driver_selection}\n' \
+               f'Turbo Driver: {self.turbo_driver}\n' \
+               f'Substitutions Needed: {self.substitutions_needed}'
+
+
+def main(
+    current_team_drivers,
+    current_team_constructors,
+    weekend_df,
+    track_name,
+    driver_pricing,
+    constructor_pricing,
+    remaining_cost_cap
+        ):
+    
+    # score predicted weekend points
+    drivers, constructors, driver_scores, constructor_scores, driver_score_summary, constructor_score_summary = score_race_qualifying_predicted(weekend_df, track_name)
+    
+    print(driver_scores)
+    print('\n')
+
+    # reevaluate team value after changes in driver valuations
+    current_driver_values = {x[0]: x[1] for x in driver_pricing[['Driver', track_name]].values}
+    current_constructor_values = {x[0]: x[1] for x in constructor_pricing[['Constructor', track_name]].values}
+    
+    # current_team_value is the updated value of drivers and teams, along with remaining_cost_cap
+    current_team_value = sum(map(lambda c: current_constructor_values[c], current_team_constructors)) + sum(map(lambda d: current_driver_values[d], current_team_drivers)) + remaining_cost_cap
+    
+    print('=== Current Team ===')
+    print(f'Constructors: {current_team_constructors}')
+    print(f'Drivers: {current_team_drivers}')
+    print(f'Current Total Value: {current_team_value}')
+    print('\n')
+    
+    use_wildcard = False
+
+    # Keep track of the top teams.
+    team_count = 0
+    possible_team_count = 0
+    top_teams = SortedList()
+
+    # Go through all team combinations of 5 drivers and 2 constructors.
+    for driver_team in itertools.combinations(drivers, 5):
+        for constructor_team in itertools.combinations(constructors, 2):
+            possible_team_count += 1
+            driver_team_price = sum(map(lambda d: current_driver_values[d], driver_team))
+            constructor_team_price = sum(map(lambda c: current_constructor_values[c], constructor_team))
+
+            full_team_price = driver_team_price + constructor_team_price
+            if full_team_price > current_team_value:
+                continue
+
+            team_count += 1
+
+            # pick the driver to apply the turbo multiplier to by the highest scoring driver on the team
+            # this sorted function gives the list in ascending order of driver scores, so the top driver is the last in the list
+            # from this stackoverflow: https://stackoverflow.com/questions/12987178/sort-a-list-based-on-dictionary-values-in-python
+            turbo_driver = sorted(driver_team, key = lambda x: driver_scores[x])[-1]
+            # get the top driver's score
+            top_driver_score = max(map(lambda x: driver_scores[x], driver_team))
+
+            team_score = 0
+            
+            # how many substitutions are needed to make my team match suggested team, for both drivers and constructors
+            substitutions_needed = 0
+            substitutions_needed += len([x for x in driver_team if x not in current_team_drivers])
+            substitutions_needed += len([x for x in constructor_team if x not in current_team_constructors])
+
+            if not use_wildcard:
+                substitutions_incurring_penalty = max(substitutions_needed - 2, 0)
+                team_score -= substitutions_incurring_penalty * 10
+
+            # calculate team score
+            team_score += sum(map(lambda x: driver_scores[x], driver_team)) + top_driver_score + sum(map(lambda x: constructor_scores[x], constructor_team))
+
+            # store the team in the top teams list, adjust if list greater than 100 long
+            team = Team(team_score, constructor_team, driver_team, turbo_driver, substitutions_needed)
+            top_teams.add(team)
+            if len(top_teams) > 100:
+                top_teams.pop(0)
+            
+
+
+    print(f'Total Number of Team Combinations: {possible_team_count}')
+    print(f'Total Number of Team Combinations less than 100M limit: {team_count}')
+
+    print(f'Explored all of the valid {team_count} teams.\n')
+
+    if use_wildcard:
+        print(f'Using wildcard!\n')
+
+    for index, team in enumerate(reversed(top_teams)):
+        print(f'=== TEAM AT POSITION {index + 1} WITH SCORE {team.score} ===')
+        print(team)
+        print()
+        
+    return top_teams
