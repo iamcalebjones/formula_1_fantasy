@@ -127,7 +127,7 @@ def drop_empties(df):
     df: same dataframe with the empty columns removed
     '''
     drops = []
-    for col in [x for x in df.columns if 'fp' in x or 'predicted' in x or 'actual' in x]:
+    for col in [x for x in df.columns if 'fp' in x or 'predicted' in x or 'actual' in x or 'bonus' in x]:
         if all(df[col].isna()):
             drops.append(col)
     
@@ -517,7 +517,7 @@ def score_race_qualifying_predicted(
     weekend_df,
     track_name):
     '''
-    this function scores the predicted race and qualifying results in one go.
+    this function scores the predicted race and qualifying results in one go. only the predicted results.
     it takes the predicted from qualifying and the race, awards points for positions gained/lost and overtakes, and awards points for finish order in qualifying and in the race. 
     it awards fastest lap to the race winner because usually that's how it goes, but not always.
     
@@ -625,12 +625,14 @@ def score_race_qualifying_predicted(
 
 
 class Team:
-    def __init__(self, score, constructor_team, driver_selection, turbo_driver, substitutions_needed):
+    def __init__(self, score, constructor_team, driver_selection, turbo_driver, substitutions_needed, proposed_team_value, remaining_cost_cap):
         self.score = score
         self.constructor_team = constructor_team
         self.driver_selection = driver_selection
         self.turbo_driver = turbo_driver
         self.substitutions_needed = substitutions_needed
+        self.proposed_team_value = proposed_team_value
+        self.remaining_cost_cap = remaining_cost_cap
 
     def __lt__(self, other):
         return self.score < other.score
@@ -639,7 +641,9 @@ class Team:
         return f'Constructor: {self.constructor_team}\n' \
                f'Drivers: {self.driver_selection}\n' \
                f'Turbo Driver: {self.turbo_driver}\n' \
-               f'Substitutions Needed: {self.substitutions_needed}'
+               f'Substitutions Needed: {self.substitutions_needed}\n' \
+               f'Proposed Team Value: {round(self.proposed_team_value, 2)}\n' \
+               f'Remaining Cost Cap: {round(self.remaining_cost_cap, 2)}'
 
 
 def main(
@@ -655,8 +659,8 @@ def main(
     # score predicted weekend points
     drivers, constructors, driver_scores, constructor_scores, driver_score_summary, constructor_score_summary = score_race_qualifying_predicted(weekend_df, track_name)
     
+    print(f'=== Predicted Driver Scores for {track_name.capitalize()} ===')
     print(driver_scores)
-    print('\n')
 
     # reevaluate team value after changes in driver valuations
     current_driver_values = {x[0]: x[1] for x in driver_pricing[['Driver', track_name]].values}
@@ -665,11 +669,12 @@ def main(
     # current_team_value is the updated value of drivers and teams, along with remaining_cost_cap
     current_team_value = sum(map(lambda c: current_constructor_values[c], current_team_constructors)) + sum(map(lambda d: current_driver_values[d], current_team_drivers)) + remaining_cost_cap
     
-    print('=== Current Team ===')
+
+    print('\n=== Current Team ===')
     print(f'Constructors: {current_team_constructors}')
     print(f'Drivers: {current_team_drivers}')
-    print(f'Current Total Value: {current_team_value}')
-    print('\n')
+    print(f'Current Team Value: {current_team_value}')
+    print(f'Current Available Value: {remaining_cost_cap}')
     
     use_wildcard = False
 
@@ -711,9 +716,11 @@ def main(
 
             # calculate team score
             team_score += sum(map(lambda x: driver_scores[x], driver_team)) + top_driver_score + sum(map(lambda x: constructor_scores[x], constructor_team))
+            proposed_team_value = sum(map(lambda x: current_driver_values[x], driver_team)) + sum(map(lambda x: current_constructor_values[x], constructor_team))
+            remaining_cost_cap = current_team_value - proposed_team_value
 
             # store the team in the top teams list, adjust if list greater than 100 long
-            team = Team(team_score, constructor_team, driver_team, turbo_driver, substitutions_needed)
+            team = Team(team_score, constructor_team, driver_team, turbo_driver, substitutions_needed, proposed_team_value, remaining_cost_cap)
             top_teams.add(team)
             if len(top_teams) > 100:
                 top_teams.pop(0)
@@ -721,7 +728,7 @@ def main(
 
 
     print(f'Total Number of Team Combinations: {possible_team_count}')
-    print(f'Total Number of Team Combinations less than 100M limit: {team_count}')
+    print(f'Total Number of Team Combinations I can afford: {team_count}')
 
     print(f'Explored all of the valid {team_count} teams.\n')
 
