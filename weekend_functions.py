@@ -136,6 +136,24 @@ def drop_empties(df):
     return df
 
 
+def drops_keep_fp(df):
+    '''
+    this utility/formatting function drops all columns from the dataframe except for the fp session results
+    
+    parameters:
+    df: dataframe of weekend results, at least through all three free practice sessions
+    
+    returns:
+    df: same dataframe with just the free practice results retained
+    '''
+    
+    drops = [x for x in df.columns if 'predicted' in x or 'actual' in x or 'bonus' in x]
+
+    df = df.drop(columns=drops, axis=1)
+    
+    return df
+
+
 def check_df(weekend_df):
     '''
     This function checks that the columns in the dataframe don't have any errors in the position numbers entered.
