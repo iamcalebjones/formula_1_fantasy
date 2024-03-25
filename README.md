@@ -4,31 +4,31 @@ I'm developing some code for picking fantasy team adjustments throughout the For
 
 The functions are in `weekend_functions.py`, and the two notebooks `prediction_analysis.ipynb` and `free_practice_analysis.ipynb` are used to perform the analyses. Since this effort is an ongoing work in progress, only essential updates will be posted here, as well as picks for each weekend.
 
-# Picks
+The links below are to the actual race results for each race.
 
-## Bahrain
+## Picks
 
+[Bahrain](https://www.formula1.com/en/results.html/2024/races/1229/bahrain/race-result.html)  
 **Driver Team**: Fernando Alonso (2x), Daniel Ricciardo, Carlos Sainz Jr., Oscar Piastri, Nico Hulkenberg  
 **Constructor Team**: Ferrari, VisaCashApp RB  
 **Predicted Points**: 85  
-**Actual Points**: 142
+**Actual Points**: 142  
 
-## Saudi Arabia
-
+[Saudi Arabia](https://www.formula1.com/en/results.html/2024/races/1230/saudi-arabia/race-result.html)  
 **Driver Team**: Max Verstappen (2x), Sergio Perez, Fernando Alonso, Charles Leclerc, Lando Norris  
 **Constructor Team**: Ferrari, Red Bull Racing-RBPT  
 **Predicted Points**: 288  
 **Actual Points**: 312  
-**Chips Used**: Limitless  
+**Chip Used**: Limitless  
 
-## Australia
-
+[Australia](https://www.formula1.com/en/results.html/2024/races/1231/australia/race-result.html)  
 **Driver Team**: Max Verstappen (2x), Daniel Ricciardo, Oscar Piastri, Pierre Gasly, Nico Hulkenberg  
 **Constructor Team**: Ferrari, VisaCashApp RB  
 **Predicted Pointes**: 167  
-**Actual Points**: 141
+**Actual Points**: 141  
+**Note**: This would have been a great team if Verstappen hadn't DNF...  
 
-## Notes
+### Notes
 
 March 12, 2024:
 I finally set this up as a repo to track my progress and have some github presence again.
