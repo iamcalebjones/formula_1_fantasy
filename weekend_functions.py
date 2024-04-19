@@ -531,12 +531,12 @@ def score_race_full(driver_scores,
     return driver_scores, constructor_scores, driver_score_summary, constructor_score_summary
 
 
-def score_race_qualifying_predicted(
+def score_race_qualifying_sprint_predicted(
     weekend_df,
     track_name):
     '''
-    this function scores the predicted race and qualifying results in one go. only the predicted results.
-    it takes the predicted from qualifying and the race, awards points for positions gained/lost and overtakes, and awards points for finish order in qualifying and in the race. 
+    this function scores the predicted race and qualifying results in one go. only the predicted results. it also scores the sprint predictions if its a sprint race weekend.
+    it takes the predicted from qualifying and the race, awards points for positions gained/lost and overtakes, and awards points for finish order in qualifying and in the race. same logic for the sprint. there are no points awarded for sprint qualifying position, only sprint finish position.
     it awards fastest lap to the race winner because usually that's how it goes, but not always.
     
     parameters:
@@ -552,9 +552,16 @@ def score_race_qualifying_predicted(
     constructor_score_summary: dict, breaking down the pieces of the constructors' scores
     '''
     
+    # check if sprint race for scoring
+    sprint_flag = False
+    for col in weekend_df.columns:
+        if 'sprint' in col:
+            sprint_flag = True
+    
     # some setup
-    predicted_df = weekend_df[['Team', 'Driver', f'predicted_qualifying_{track_name}', f'predicted_race_{track_name}']]
-    predicted_df = predicted_df[predicted_df[f'predicted_qualifying_{track_name}'] <= 20]
+    cols = ['Team', 'Driver']
+    cols.extend([x for x in weekend_df.columns if 'predicted' in x])
+    predicted_df = weekend_df[cols]
     driver_scores, constructor_scores, driver_score_summary, constructor_score_summary = {}, {}, {}, {}
     driver_to_constructor, constructor_to_driver = driver_constructor_mappings(predicted_df)
     predicted_qualifying_order = predicted_df.sort_values(by=[f'predicted_qualifying_{track_name}'])['Driver'].tolist()
@@ -564,9 +571,11 @@ def score_race_qualifying_predicted(
         constructor = predicted_df.loc[predicted_df.Driver == driver]['Team'].values[0]
         driver_score_summary[driver] = {}
         driver_score_summary[driver]['constructor'] = constructor
+        driver_score_summary[driver]['sprint_race'] = sprint_flag
         driver_points = 0
         constructor_points = 0
         
+        # score quali and race positions, and determine gain/loss and overtakes
         quali_position = predicted_df.loc[predicted_df.Driver == driver][f'predicted_qualifying_{track_name}'].values[0]
         race_position = predicted_df.loc[predicted_df.Driver == driver][f'predicted_race_{track_name}'].values[0]
 
@@ -585,9 +594,26 @@ def score_race_qualifying_predicted(
         race_position_points = race_position_to_points.get(race_position)
         quali_position_points = quali_position_to_points.get(quali_position)
         
+        # score sprint predictions
+        sprint_position_points, driver_sprint_gain_loss, driver_sprint_overtake = 0, 0, 0
+        
+        if sprint_flag:
+            sprint_quali_position = predicted_df.loc[predicted_df.Driver == driver][f'predicted_sprint_qualifying_{track_name}'].values[0]
+            sprint_race_position = predicted_df.loc[predicted_df.Driver == driver][f'predicted_sprint_race_{track_name}'].values[0]
+            
+            driver_sprint_gain_loss = sprint_quali_position - sprint_race_position
+            driver_sprint_overtake = (driver_sprint_gain_loss if driver_sprint_gain_loss >= 0 else 0)
+            sprint_position_points = sprint_position_to_points.get(sprint_race_position)
+
+            driver_score_summary[driver]['sprint_quali_position'] = sprint_quali_position
+            driver_score_summary[driver]['sprint_race_position'] = sprint_race_position
+            driver_score_summary[driver]['sprint_gain_loss'] = driver_sprint_gain_loss
+            driver_score_summary[driver]['sprint_overtake'] = driver_sprint_overtake
+            driver_score_summary[driver]['sprint_position_points'] = sprint_position_points
+        
         # tally up the gain/loss, overtake, race position points, and quali position points
-        driver_points += driver_gain_loss + driver_overtake + race_position_points + quali_position_points
-        constructor_points += driver_gain_loss + driver_overtake + race_position_points + quali_position_points
+        driver_points += driver_gain_loss + driver_overtake + race_position_points + quali_position_points + sprint_position_points + driver_sprint_gain_loss + driver_sprint_overtake
+        constructor_points += driver_gain_loss + driver_overtake + race_position_points + quali_position_points + sprint_position_points + driver_sprint_gain_loss + driver_sprint_overtake
         
         driver_score_summary[driver]['quali_position_points'] = quali_position_points
         driver_score_summary[driver]['race_position_points'] = race_position_points
@@ -634,10 +660,12 @@ def score_race_qualifying_predicted(
         constructor_score_summary[constructor]['quali_position_points'] = quali_position_points
         constructor_score_summary[constructor]['quali_finish_points'] = team_quali_score
         
-        
-    # award fastest lap to driver predicted to finish race in P1
+    # award fastest lap scores, +10 for fastest race lap, +5 for fastest sprint lap
     fastest_driver = predicted_df.sort_values(f'predicted_race_{track_name}')['Driver'].tolist()[0]
     driver_scores = increase_score(driver_scores, fastest_driver, 10)
+
+    fastest_sprint_driver = predicted_df.sort_values(f'predicted_sprint_race_{track_name}')['Driver'].tolist()[0]
+    driver_scores = increase_score(driver_scores, fastest_sprint_driver, 5)
 
     return predicted_df.Driver.tolist(), predicted_df.Team.unique(), driver_scores, constructor_scores, driver_score_summary, constructor_score_summary
 
@@ -675,7 +703,7 @@ def main(
         ):
     
     # score predicted weekend points
-    drivers, constructors, driver_scores, constructor_scores, driver_score_summary, constructor_score_summary = score_race_qualifying_predicted(weekend_df, track_name)
+    drivers, constructors, driver_scores, constructor_scores, driver_score_summary, constructor_score_summary = score_race_qualifying_sprint_predicted(weekend_df, track_name)
     
     print(f'=== Predicted Driver Scores for {track_name.capitalize()} ===')
     print(driver_scores)
@@ -691,7 +719,7 @@ def main(
     print('\n=== Current Team ===')
     print(f'Constructors: {current_team_constructors}')
     print(f'Drivers: {current_team_drivers}')
-    print(f'Current Team Value: {current_team_value}')
+    print(f'Current Team Value: {round(current_team_value, 1)}')
     print(f'Current Available Value: {remaining_cost_cap}')
     
     use_wildcard = False
