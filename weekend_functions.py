@@ -557,7 +557,9 @@ def score_race_qualifying_sprint_predicted(
     for col in weekend_df.columns:
         if 'sprint' in col:
             sprint_flag = True
-    
+            print(f'{track_name.capitalize()} is a Sprint Race Weekend.')
+            break
+            
     # some setup
     cols = ['Team', 'Driver']
     cols.extend([x for x in weekend_df.columns if 'predicted' in x])
@@ -784,6 +786,16 @@ def main(
     for index, team in enumerate(reversed(top_teams)):
         print(f'=== TEAM AT POSITION {index + 1} WITH SCORE {team.score} ===')
         print(team)
+        drops = [driver for driver in current_team_drivers if driver not in team.driver_selection]
+        drops.extend([constructor for constructor in current_team_constructors if constructor not in team.constructor_team])
+        
+        pickups = [driver for driver in team.driver_selection if driver not in current_team_drivers]
+        pickups.extend([constructor for constructor in team.constructor_team if constructor not in current_team_constructors])
+        
+        print('Changes to make:')
+        for drop, pickup in zip(drops, pickups):
+            print(f'    Drop {drop} for {pickup}')
+        
         print()
         
     return top_teams
