@@ -764,7 +764,7 @@ def main(
 
             # calculate team score
             team_score += sum(map(lambda x: driver_scores[x], driver_team)) + top_driver_score + sum(map(lambda x: constructor_scores[x], constructor_team))
-            proposed_team_value = sum(map(lambda x: current_driver_values[x], driver_team)) + sum(map(lambda x: current_constructor_values[x], constructor_team))
+            proposed_team_value = driver_team_price + constructor_team_price
             remaining_cost_cap = current_team_value - proposed_team_value
 
             # store the team in the top teams list, adjust if list greater than 100 long
